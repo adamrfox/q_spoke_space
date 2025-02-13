@@ -105,19 +105,31 @@ def get_token_from_file(file):
 
 def convert_from_bytes(bytes, unit):
     if unit == 'b':
-        return(bytes, '')
+        return(bytes)
     if unit == 'k':
-        return(int(bytes/1000), unit)
+        return(int(bytes/1000))
     if unit == 'm':
-        return(int(bytes/1000/1000), unit)
+        return(int(bytes/1000/1000))
     if unit == 'g':
-        return((int(bytes/1000/1000/1000), unit))
+        return(int(bytes/1000/1000/1000))
     if unit == 't':
-        return(int(bytes/1000/1000/1000/1000), unit)
+        return(int(bytes/1000/1000/1000/1000))
     if unit == 'p':
-        return(int(bytes/1000/1000/1000/1000/1000), unit)
+        return(int(bytes/1000/1000/1000/1000/1000))
     sys.stderr.write("Unsupported unit: " + unit + ".  Supported: kb, mb, gb, tb, pb\n")
     exit(2)
+
+def compute_size(bytes):
+    if bytes >= 1000000000000000:
+        return(convert_from_bytes(bytes, 'p'), 'p')
+    elif bytes >= 1000000000000:
+        return(convert_from_bytes(bytes, 't'), 't')
+    elif bytes >= 1000000000:
+        return(convert_from_bytes(bytes, 'g'), 'g')
+    elif bytes > 1000000:
+        return(convert_from_bytes(bytes, 'm'), 'm')
+    elif bytes > 1000:
+        return(convert_from_bytes(bytes, 'k'), 'k')
 
 if __name__ == "__main__":
     DEBUG = False
@@ -175,6 +187,8 @@ if __name__ == "__main__":
         sys.stderr.write("Spoke " + qumulo + " is not found.\n")
         exit(2)
     dprint("SPOKE_DATA: " + str(spoke_data))
+    spoke_size_data = qumulo_get(spoke, spoke_auth, '/v1/file-system')
+    spoke_total_size = spoke_size_data['total_size_bytes']
     hub_auth = api_login(spoke_data['hub'], hub_user, hub_password, token, 'hub')
     dprint("HUB_AUTH: " + str(hub_auth))
     hub_path_data = qumulo_get(spoke_data['hub'], hub_auth, '/v1/portal/hubs/' + str(spoke_data['hub_id']))
@@ -187,26 +201,8 @@ if __name__ == "__main__":
     spoke_size = int(spoke_size_data[0]['usage_bytes'])
     percent_diff = spoke_size / hub_size
     if not unit:
-        if hub_size >= 1000000000000000:
-            (hub_size, hub_prefix) = convert_from_bytes(hub_size, 'p')
-        elif hub_size >= 1000000000000:
-            (hub_size, hub_prefix) = convert_from_bytes(hub_size, 't')
-        elif hub_size >= 1000000000:
-            (hub_size, hub_prefix) = convert_from_bytes(hub_size, 'g')
-        elif hub_size > 1000000:
-            (hub_size, hub_prefix) = convert_from_bytes(hub_size, 'm')
-        elif hub_size > 1000:
-            (hub_size, hub_prefix) = convert_from_bytes(hub_size, 'k')
-        if spoke_size >= 1000000000000000:
-            (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, 'p')
-        elif spoke_size >= 1000000000000:
-            (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, 't')
-        elif spoke_size >= 1000000000:
-            (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, 'g')
-        elif spoke_size > 1000000:
-            (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, 'm')
-        elif spoke_size > 1000:
-            (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, 'k')
+        (hub_size, hub_prefix) = compute_size(hub_size)
+        (spoke_size, spoke_prefix) = compute_size(spoke_size)
     else:
         (hub_size, hub_prefix) = convert_from_bytes(hub_size, unit)
         (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, unit)

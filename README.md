@@ -28,6 +28,7 @@ By default, the script will convert the raw bytes into the largest unit that mak
 SPOKE:
 <pre>
 PORTAL_SPOKE_READ
+PORTAL_GLOBAL_READ
 FS_ATTRIBUTES_READ
 </pre>
 

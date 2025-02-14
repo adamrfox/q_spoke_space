@@ -14,11 +14,12 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 def usage():
-    sys.stderr.write("Usage: q_spoke_space.py [-hD] [-c user] [-s user] [-H user] [-u unit] spoke:path\n")
+    sys.stderr.write("Usage: q_spoke_space.py [-hDS] [-c user] [-s user] [-H user] [-u unit] spoke:path\n")
     sys.stderr.write("-h | --help : Prints Usage\n")
     sys.stderr.write("-D | --DEBUG : Generated debug output\n")
+    sys.stderr.write("-s | --sooke_only : Only show stats on the spoke, not the hub\n")
     sys.stderr.write("-c | --cred : Specify a common user on hub and spoke\n")
-    sys.stderr.write("-s | --spoke_user : Specify a spoke user\n")
+    sys.stderr.write("-S | --spoke_user : Specify a spoke user\n")
     sys.stderr.write("-H | --hub_user : Specify a hub user\n")
     sys.stderr.write("-u | --unit : Specify a unit [kb, mb, gb, tb, pb]\n")
     sys.stderr.write("spoke:path : Specify the name/IP of the spoke and the root of the spoke (colon separated)\n")
@@ -148,19 +149,23 @@ if __name__ == "__main__":
     RING_SYSTEM = "q_spoke_space"
     unit = ""
     spoke_data = {}
+    SPOKE_ONLY = False
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'hDu:c:s:H:', ['help', 'DEBUG', 'unit', 'cred', 'spoke_user', 'hub_user'])
+    optlist, args = getopt.getopt(sys.argv[1:], 'hDsu:c:S:H:', ['help', 'DEBUG', '--spoke_only', 'unit', 'cred',
+                                                                'spoke_user', 'hub_user'])
     for opt, a in optlist:
         if opt in ('-h', '--help'):
             usage()
         if opt in ('-D', '--DEBUG'):
             DEBUG = True
+        if opt in ('-s', '--spoke_only'):
+            SPOKE_ONLY = True
         if opt in ('-u', '--unit'):
             unit = a[0].lower()
         if opt in ('-c', '--cred'):
             user = a
             hub_user = a
-        if opt in ('-s', '--spoke_user'):
+        if opt in ('-S', '--spoke_user'):
             spoke_user = a
         if opt in ('-H', '--hub_user'):
             hub_user = a
@@ -188,27 +193,35 @@ if __name__ == "__main__":
         exit(2)
     dprint("SPOKE_DATA: " + str(spoke_data))
     spoke_size_data = qumulo_get(spoke, spoke_auth, '/v1/file-system')
-    spoke_total_size = spoke_size_data['total_size_bytes']
-    hub_auth = api_login(spoke_data['hub'], hub_user, hub_password, token, 'hub')
-    dprint("HUB_AUTH: " + str(hub_auth))
-    hub_path_data = qumulo_get(spoke_data['hub'], hub_auth, '/v1/portal/hubs/' + str(spoke_data['hub_id']))
-    hub_path_id_data = qumulo_get(spoke_data['hub'], hub_auth, '/v1/files/' +
+    spoke_total_size = int(spoke_size_data['total_size_bytes'])
+    if not SPOKE_ONLY:
+        hub_auth = api_login(spoke_data['hub'], hub_user, hub_password, token, 'hub')
+        dprint("HUB_AUTH: " + str(hub_auth))
+        hub_path_data = qumulo_get(spoke_data['hub'], hub_auth, '/v1/portal/hubs/' + str(spoke_data['hub_id']))
+        hub_path_id_data = qumulo_get(spoke_data['hub'], hub_auth, '/v1/files/' +
                                   urllib.parse.quote(hub_path_data['root_path'], safe='') + '/info/attributes')
-    hub_path_stats = qumulo_get(spoke_data['hub'], hub_auth, '/v1/files/' + str(hub_path_id_data['id']) + '/recursive-aggregates/')
-    dprint("SIZE: " + str(hub_path_stats[0]['total_capacity']))
-    hub_size = int(hub_path_stats[0]['total_capacity'])
+        hub_path_stats = qumulo_get(spoke_data['hub'], hub_auth, '/v1/files/' + str(hub_path_id_data['id']) + '/recursive-aggregates/')
+        dprint("SIZE: " + str(hub_path_stats[0]['total_capacity']))
+        hub_size = int(hub_path_stats[0]['total_capacity'])
     spoke_size_data = qumulo_get(spoke, spoke_auth, '/v1/portal/file-systems/')
     spoke_size = int(spoke_size_data[0]['usage_bytes'])
-    percent_diff = spoke_size / hub_size
+    if not SPOKE_ONLY:
+        percent_hub = spoke_size / hub_size
+    percent_spoke = spoke_size / spoke_total_size
+    dprint("SPOKE_SIZE: " + str(spoke_size))
+    dprint("SPOKE_TOTAL_SIZE: " + str(spoke_total_size))
+    if not SPOKE_ONLY:
+        dprint("HUB SIZE: " + str(hub_size))
     if not unit:
-        (hub_size, hub_prefix) = compute_size(hub_size)
+        if not SPOKE_ONLY:
+            (hub_size, hub_prefix) = compute_size(hub_size)
         (spoke_size, spoke_prefix) = compute_size(spoke_size)
     else:
-        (hub_size, hub_prefix) = convert_from_bytes(hub_size, unit)
+        if not SPOKE_ONLY:
+            (hub_size, hub_prefix) = convert_from_bytes(hub_size, unit)
         (spoke_size, spoke_prefix) = convert_from_bytes(spoke_size, unit)
-    print("Hub: " + str(hub_size) + " " + hub_prefix + "b")
     print("Spoke: " + str(spoke_size) + " " + spoke_prefix + "b : ", end='')
-    print ('{:1.1f}%'.format(percent_diff))
-
-
-
+    print ('{:1.1f}% of total spoke space'.format(percent_spoke))
+    if not SPOKE_ONLY:
+        print("Hub: " + str(hub_size) + " " + hub_prefix + "b")
+        print ('Spoke is {:1.1f}% of the Hub'.format(percent_hub))
